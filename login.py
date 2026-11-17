@@ -1,51 +1,65 @@
-"""One-time interactive login for the Telegram MCP server.
+"""One-time interactive Telegram login. Run it yourself, in a terminal:
 
-Run once:  .venv\\Scripts\\python.exe login.py
+    .venv/bin/python login.py           # QR code: Telegram → Settings → Devices → Link Desktop Device
+    .venv/bin/python login.py --phone   # fallback: phone number + login code
 
-It asks for your api_id / api_hash (from https://my.telegram.org), then your
-phone number, the login code Telegram sends you, and your 2FA password if you
-have one. It writes API_ID, API_HASH, and a reusable SESSION_STRING to .env.
+API_ID / API_HASH are read from ~/.config/telegram-mcp/env (fill them in first).
+The 2FA password, if any, is read without echo. The session is written to
+~/.config/telegram-mcp/session with mode 600. Nothing secret is printed.
 """
 
-import os
-from pathlib import Path
+import asyncio
+import sys
+from getpass import getpass
 
-from dotenv import load_dotenv
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
+import qrcode
+from telethon.errors import SessionPasswordNeededError
 
-ENV = Path(__file__).with_name(".env")
-load_dotenv(ENV)
-
-
-def get(name: str, prompt_text: str, cast=str):
-    value = os.getenv(name)
-    if not value:
-        value = input(prompt_text).strip()
-    return cast(value)
+import tg_common as tc
 
 
-def main() -> None:
-    print("Telegram MCP - one-time login\n")
-    print("First get api_id and api_hash from https://my.telegram.org")
-    print("  -> log in -> 'API development tools' -> create an app.\n")
+def show_qr(url: str) -> None:
+    qr = qrcode.QRCode(border=2)
+    qr.add_data(url)
+    qr.print_ascii(invert=True)
+    print("Scan with Telegram → Settings → Devices → Link Desktop Device (code refreshes every ~30 s).")
 
-    api_id = get("API_ID", "api_id: ", int)
-    api_hash = get("API_HASH", "api_hash: ")
-    existing = os.getenv("SESSION_STRING") or None
 
-    with TelegramClient(StringSession(existing), api_id, api_hash) as client:
-        me = client.get_me()
-        session_string = client.session.save()
-        print(f"\nLogged in as {me.first_name} (@{me.username}).")
+async def qr_login(client) -> None:
+    qr = await client.qr_login()
+    while True:
+        show_qr(qr.url)
+        try:
+            await qr.wait(timeout=30)
+            return
+        except asyncio.TimeoutError:
+            await qr.recreate()
+        except SessionPasswordNeededError:
+            await client.sign_in(password=getpass("2FA password (not echoed): "))
+            return
 
-    ENV.write_text(
-        f"API_ID={api_id}\nAPI_HASH={api_hash}\nSESSION_STRING={session_string}\n",
-        encoding="utf-8",
+
+async def phone_login(client) -> None:
+    await client.start(
+        phone=lambda: input("Phone number (international format, e.g. +44...): "),
+        code_callback=lambda: input("Login code sent by Telegram: "),
+        password=lambda: getpass("2FA password (not echoed): "),
     )
-    print(f"Saved credentials + session to {ENV}")
-    print("Keep this .env file private - the session string is like a password.")
+
+
+async def main() -> None:
+    tc.check_all()
+    client = tc.make_client(tc.read_session())
+    await client.connect()
+    try:
+        if not await client.is_user_authorized():
+            await (phone_login(client) if "--phone" in sys.argv else qr_login(client))
+        me = await client.get_me()
+        tc.write_private(tc.SESSION_FILE, client.session.save())
+        print(f"\nLogged in as {me.first_name} (@{me.username}). Session saved to {tc.SESSION_FILE} (mode 600).")
+    finally:
+        await client.disconnect()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

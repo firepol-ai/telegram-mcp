@@ -1,5 +1,12 @@
 .venv/
-.env
 __pycache__/
+# Secrets and state live in ~/.config/telegram-mcp/, never in the repo. Safety net:
+.env
+.env.*
+env
+session
 *.session
 *.session-journal
+state.json
+config.toml
+SOUL.md
