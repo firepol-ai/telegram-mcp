@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "defaultMode": "default",
+    "additionalDirectories": [
+      "/abs/path/to/repo-1",
+      "/abs/path/to/repo-2"
+    ],
+    "allow": [
+      "mcp__telegram__get_me",
+      "mcp__telegram__list_chats",
+      "mcp__telegram__list_unread",
+      "mcp__telegram__get_history",
+      "mcp__telegram__get_unread",
+      "mcp__telegram__get_since",
+      "mcp__telegram__get_mentions",
+      "mcp__telegram__search_messages",
+      "mcp__telegram__search_all",
+      "mcp__telegram__poll_new"
+    ],
+    "ask": [
+      "mcp__telegram__send_message"
+    ],
+    "deny": [
+      "Bash",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch",
+      "Read(~/.config/telegram-mcp/**)",
+      "Read(~/.ssh/**)",
+      "Read(//**/.env*)",
+      "Read(//**/.vercel/**)",
+      "Read(//**/.cache/**)",
+      "Read(//**/logs/**)",
+      "Read(//**/*.pem)",
+      "Read(//**/*.key)"
+    ]
+  }
+}

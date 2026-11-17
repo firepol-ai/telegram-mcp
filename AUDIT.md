@@ -107,3 +107,18 @@ Tags: **OK** = no action needed, **RISK** = worth knowing, accepted or mitigated
 - **OK** Exceptions propagate to FastMCP, which returns `str(exc)` to the model. Telethon RPC errors contain the error name and request type, never the auth key or session string. `server.py:40-42` names only the missing variable.
 - **RISK** `server.py:23` Telethon logs at WARNING to stderr (Claude Code's MCP log). Telethon does not log secrets at that level. Keep.
 - **FIX** No FloodWait handling beyond Telethon's default auto-sleep of up to 60 s. Raise `flood_sleep_threshold` so long catch-up reads sleep and retry instead of failing.
+
+## Resolution on the `hardened` branch
+
+| Finding | Resolution |
+|---|---|
+| Actions enabled on fork | Disabled via API (`actions/permissions enabled=false`) |
+| `.env` in repo, 0644, ACL inherited | `~/.config/telegram-mcp/` (700/600), written with `O_EXCL` + 0600 (`tg_common.py` `write_private`); server refuses wrong owner, group/other bits or ACLs (`tg_common.py` `check_private`) |
+| Secrets in `os.environ` | Env file parsed into a dict (`tg_common.py` `load_env`); `python-dotenv` no longer a direct dependency |
+| Phone in `get_me` | Removed |
+| Unpinned deps | `pyproject.toml` (exact) + `uv.lock` (sha256); one new direct dep: `qrcode==8.2` for QR login (pure Python, no deps on Linux, source checked: no network) |
+| `send_message` always on | Registered only with `TELEGRAM_MCP_ALLOW_SEND=1`; allowlist from `config.toml`; preview → identical `confirm=true`; server-side signature; rate limit |
+| First-match title resolution | Exact match wins; otherwise ambiguous titles return the candidates |
+| Bare third-party text | `<telegram_message>` delimiters, delimiter neutralisation, untrusted note in every tool description and result |
+| FloodWait swallowed / 60 s cap | `flood_sleep_threshold=600`; no blanket `except` in resolution |
+| No tests | `tests/smoke.py`: tool list without login, no write tools by default, refuses loose perms and ACLs |

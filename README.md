@@ -1,176 +1,169 @@
-# Telegram MCP Server
+# Telegram MCP Server (hardened fork)
 
-A local [Model Context Protocol](https://modelcontextprotocol.io) server that gives an AI agent (Claude Code, Claude Desktop, or any MCP client) controlled access to **your own Telegram account**: list chats, read history, search, and send messages, through Telegram's MTProto API.
+A local [Model Context Protocol](https://modelcontextprotocol.io) server that lets Claude Code (or any MCP client) read **your own Telegram account** over MTProto, built on [Telethon](https://docs.telethon.dev).
 
-Built with Python + [Telethon](https://docs.telethon.dev). Runs entirely on your machine; your login session never leaves it.
+This is a hardened fork of [Shaan-alpha/telegram-mcp](https://github.com/Shaan-alpha/telegram-mcp), started from upstream `0397afa`. See [AUDIT.md](AUDIT.md) for the audit of the upstream code and what was changed.
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![MCP](https://img.shields.io/badge/protocol-MCP-8A2BE2) ![License](https://img.shields.io/badge/license-MIT-green)
+## What is different from upstream
 
-## Why
-
-Telegram's **Bot API can't see your existing chats**; a bot is a separate identity and only receives messages explicitly sent to it. To let an agent work with *your* real conversations you need the **MTProto client API**, authenticated as your user account. This project wraps that in a small, focused MCP server so any MCP-capable agent can read and act on your Telegram; without you writing glue code each time.
-
-## How it fits together
-
-A Telegram **bot** is a separate identity and only sees messages sent to it. To let an agent
-work with *your* conversations, the server authenticates as your user account over MTProto,
-which is why the session string matters as much as it does.
-
-```mermaid
-flowchart LR
-    AGENT["<b>MCP client</b><br/>Claude Code · Claude Desktop<br/>or any MCP-capable agent"]
-
-    subgraph LOCAL ["Your machine — nothing leaves it but Telegram traffic"]
-        direction TB
-        SRV["<b>server.py</b> · FastMCP stdio server<br/>connects lazily on first tool call<br/>verifies the session is authorized"]
-        TOOLS["<b>6 tools</b><br/>get_me · list_chats · get_history<br/>search_messages · search_all · send_message"]
-        ENV[("<b>.env</b> · git-ignored<br/>api_id · api_hash<br/><b>SESSION_STRING</b><br/><i>equivalent to being logged in as you</i>")]
-        LOGIN["<b>login.py</b> · run once<br/>phone + code + 2FA → StringSession"]
-        SRV --> TOOLS
-        LOGIN -->|"writes"| ENV
-        ENV -->|"reads"| SRV
-    end
-
-    subgraph TL ["Telethon → MTProto"]
-        direction TB
-        M1["iter_dialogs"]
-        M2["iter_messages"]
-        M3["SearchGlobalRequest"]
-        M4["send_message"]
-    end
-
-    TG[("<b>Telegram</b><br/>your real account,<br/>your existing chats")]
-    BOT(["Bot API<br/><i>cannot see your chats —<br/>this is why MTProto</i>"])
-
-    AGENT <-->|"MCP over stdio"| SRV
-    TOOLS --> M1
-    TOOLS --> M2
-    TOOLS --> M3
-    TOOLS --> M4
-    TL <--> TG
-    BOT -.->|"✗"| TG
-
-    classDef secret fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#fee2e2
-    classDef no fill:#0f172a,stroke:#475569,stroke-width:1.5px,color:#94a3b8
-    classDef core fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#e2e8f0
-    class ENV secret
-    class BOT no
-    class SRV,TOOLS core
-```
-
-Results come back as plain JSON-serializable dicts, so the agent summarizes from structured
-data rather than scraped text.
-
-## Features
-
-- **6 tools** covering the common read/write actions (see below)
-- **Local-only** — credentials and session live in a git-ignored `.env`; nothing is sent anywhere except Telegram
-- **Standard MCP stdio server** — works with Claude Code, Claude Desktop, or any MCP client
-- **One-time login** — interactive script stores a reusable session string; no re-auth on every run
-- **Small and readable** — under 300 lines of Python, easy to audit and extend
+- **Read-only by default.** `send_message` only exists when `TELEGRAM_MCP_ALLOW_SEND=1`, only targets chats marked `send = true` in `config.toml`, always returns a preview first, needs a second `confirm=true` call with identical arguments, appends a fixed signature, and is rate-limited.
+- **Never marks anything as read.** Your unread state in the Telegram apps stays as it was.
+- **Secrets out of the repo and out of MCP configs.** Everything lives in `~/.config/telegram-mcp/`. The server refuses to start if that directory or any file in it is accessible to group/others, has a POSIX ACL, or is owned by another user.
+- **Untrusted content is marked.** Message text is wrapped in `<telegram_message>` tags (delimiters inside messages are neutralised) and every tool description says it is third-party data, not instructions.
+- **Catch-up tools** for summarising long chats, and `poll_new` for a periodic agent.
+- **Pinned dependencies** with hashes (`uv.lock`), QR-code login, a smoke test.
 
 ## Tools
 
 | Tool | Description |
-|------|-------------|
-| `get_me()` | Return the connected account (sanity check) |
-| `list_chats(limit=20)` | Your most recent conversations |
-| `get_history(chat, limit=30)` | Recent messages from one chat |
-| `search_messages(chat, query, limit=30)` | Search within one chat |
-| `search_all(query, limit=30)` | Search across **all** your chats at once |
-| `send_message(chat, text)` | Send a message as you |
+|---|---|
+| `get_me()` | The logged-in account (id, username, name) |
+| `list_chats(limit=30)` | Recent chats with ids, type, unread counts |
+| `list_unread()` | Chats with unread messages or unread @mentions, newest first |
+| `get_history(chat, limit=50)` | Latest messages, oldest→newest |
+| `get_unread(chat, limit=2000)` | Unread messages, oldest→newest (does not mark read) |
+| `get_since(chat, since_iso, limit=2000)` | Messages since a date, oldest→newest |
+| `get_mentions(chat=None, limit=200)` | Messages that @mention me or reply to me; all chats if `chat` is omitted |
+| `search_messages(chat, query, limit=50)` | Search in one chat |
+| `search_all(query, limit=50)` | Search across all chats |
+| `poll_new(limit_per_chat=200)` | New messages in the chats listed in `config.toml` since the last call (local cursor) |
+| `send_message(chat, text, reply_to=None, confirm=False)` | **Only with `TELEGRAM_MCP_ALLOW_SEND=1`.** Preview, then send after approval |
 
-`chat` accepts a username (`@name`), numeric id, phone number, `t.me` link, or the chat's display name.
+`chat` accepts a numeric id, `@username`, `t.me` link, or (partial) title. If a title matches several chats you get the list of candidates instead of a guess.
 
-## Quickstart
+Each message is one compact line: `<telegram_message id=… ts=… from="…" reply_to=… to_me=1 fwd="…" media=… link=https://t.me/…>text</telegram_message>`. Large limits are paged automatically and FloodWait pauses of up to 10 minutes are slept through.
 
-### 1. Install
+## Setup
 
-```bash
-git clone https://github.com/Shaan-alpha/telegram-mcp.git
-cd telegram-mcp
-python -m venv .venv
+Requires [uv](https://docs.astral.sh/uv/). Paths below assume the repo is at `~/src/telegram-mcp`.
 
-# Windows
-.venv\Scripts\pip install -r requirements.txt
-# macOS / Linux
-.venv/bin/pip install -r requirements.txt
-```
-
-### 2. Get API credentials
-
-Go to [my.telegram.org](https://my.telegram.org) → **API development tools** → create an app → copy the `api_id` and `api_hash`.
-
-### 3. Log in (one time)
+### 1. Install (pinned)
 
 ```bash
-# Windows
-.venv\Scripts\python login.py
-# macOS / Linux
-.venv/bin/python login.py
+git clone git@github.com:firepol-ai/telegram-mcp.git ~/src/telegram-mcp
+cd ~/src/telegram-mcp
+uv sync --locked          # creates .venv/ from uv.lock, verifying hashes
+.venv/bin/python tests/smoke.py
 ```
 
-Enter your `api_id`/`api_hash`, phone number (with country code), and the login code Telegram sends you (plus your 2FA password if set). This writes a reusable session to `.env`.
-
-### 4. Register with your MCP client
-
-**Claude Code:**
+### 2. Private config directory
 
 ```bash
-claude mcp add telegram --scope user -- "/abs/path/.venv/bin/python" "/abs/path/server.py"
+mkdir -p ~/.config/telegram-mcp
+setfacl -b ~/.config/telegram-mcp 2>/dev/null; chmod 700 ~/.config/telegram-mcp
+(umask 077; printf 'API_ID=\nAPI_HASH=\n' > ~/.config/telegram-mcp/env)
+(umask 077; cp config.example.toml ~/.config/telegram-mcp/config.toml)
 ```
 
-**Claude Desktop**; add to `claude_desktop_config.json`:
+`setfacl -b` matters if `~/.config` carries a default ACL: new files would inherit it and the server would refuse them.
+
+### 3. API credentials
+
+At [my.telegram.org](https://my.telegram.org) → **API development tools**, create an app and put `api_id` / `api_hash` into `~/.config/telegram-mcp/env` with your editor. Do not paste them into a chat with an AI.
+
+### 4. Log in, yourself, in a terminal
+
+```bash
+cd ~/src/telegram-mcp
+.venv/bin/python login.py           # QR code: Telegram → Settings → Devices → Link Desktop Device
+.venv/bin/python login.py --phone   # fallback: phone number + login code
+```
+
+The 2FA password (if set) is asked without echo. The session is written to `~/.config/telegram-mcp/session` (mode 600).
+
+### 5. Register with your MCP client
+
+Claude Code, read-only, in every project:
+
+```bash
+claude mcp add --scope user telegram -- ~/src/telegram-mcp/.venv/bin/python ~/src/telegram-mcp/server.py
+```
+
+Claude Desktop (`claude_desktop_config.json`), read-only:
 
 ```json
 {
   "mcpServers": {
     "telegram": {
-      "command": "/abs/path/.venv/bin/python",
-      "args": ["/abs/path/server.py"]
+      "command": "/home/YOU/src/telegram-mcp/.venv/bin/python",
+      "args": ["/home/YOU/src/telegram-mcp/server.py"]
     }
   }
 }
 ```
 
-Restart your client and the `telegram` tools are available.
+No secrets go into either config.
 
-## Example
+### Example
 
-> **You:** Search all my Telegram chats for "invoice" and summarize what's outstanding.
+> Use the telegram tools: summarise unread in 'Dev team': decisions, things asked of me, open issues, links shared, short timeline with message links.
 
-The agent calls `search_all("invoice")`, which returns:
+## Secretary agent mode
 
-```json
-[
-  {
-    "id": 84213,
-    "date": "2026-07-02T09:14:00+00:00",
-    "chat": "Acme Billing",
-    "from": "Acme Billing",
-    "text": "Invoice #204 is due on the 10th."
-  }
-]
+A long-running Claude Code session that watches selected chats, tells you what needs your attention, and drafts replies for you to approve, steered from the Claude mobile app via Remote Control.
+
+### Pieces
+
+- `~/.config/telegram-mcp/config.toml`: which chats `poll_new` watches, which ones may receive a sent message, the signature and the rate limit. **Enforced by the server**, so a manipulated model cannot widen it. See [config.example.toml](config.example.toml).
+- A workspace directory with:
+  - `CLAUDE.md`: the secretary's procedure ([agent/CLAUDE.md](agent/CLAUDE.md)),
+  - `SOUL.md`: your people, priorities, tone, reference repositories and what never to share ([agent/SOUL.example.md](agent/SOUL.example.md)),
+  - `.claude/settings.json`: permissions ([agent/settings.example.json](agent/settings.example.json)): read-only access to the listed repositories, Telegram read tools allowed, `send_message` always asks, Bash/Edit/Write/Web denied, `.env*` and the Telegram config unreadable. **Do not run this session with `--dangerously-skip-permissions` or in auto mode:** it processes text written by other people.
+
+### Set up
+
+```bash
+mkdir -p ~/telegram-agent/.claude && cd ~/telegram-agent
+cp ~/src/telegram-mcp/agent/CLAUDE.md .
+cp ~/src/telegram-mcp/agent/SOUL.example.md SOUL.md                    # then edit
+cp ~/src/telegram-mcp/agent/settings.example.json .claude/settings.json  # then set additionalDirectories
+claude mcp add --scope local telegram -e TELEGRAM_MCP_ALLOW_SEND=1 -- \
+  ~/src/telegram-mcp/.venv/bin/python ~/src/telegram-mcp/server.py
 ```
 
-…and the agent summarizes from there.
+The `local` registration overrides the read-only user-scope one only inside this directory. Get chat ids with `list_chats` and add them to `config.toml` as `[[chats]]`.
 
-## How it works
+### Run
 
-`login.py` authenticates once via Telethon and saves a `StringSession` to `.env`. `server.py` builds a [FastMCP](https://modelcontextprotocol.io) stdio server, connects lazily on the first tool call, verifies the session is authorized, and maps each tool to a Telethon call (`iter_dialogs`, `iter_messages`, `SearchGlobalRequest`, `send_message`). Results are returned as plain JSON-serializable dicts.
+```bash
+tmux new -s telegram-agent
+cd ~/telegram-agent && claude
+```
 
-## Security
+Inside the session: accept the workspace trust dialog, run `/remote-control` (give it a title), then `/loop 3m Run the Telegram check from CLAUDE.md`. Detach with `Ctrl-b d`. On your phone, open the session in the Claude app: you get notified when something needs you; answer `send 1` to approve a draft, then approve the `send_message` permission prompt.
 
-- **Keep `.env` private.** The `SESSION_STRING` is equivalent to being logged in as you. It is git-ignored, never commit it.
-- Everything runs locally; the server talks only to Telegram's servers.
-- Automating a *user* account is a Telegram ToS gray area. Reading your own account is generally fine; keep sending human-paced and avoid bulk/spam activity to stay clear of account limits.
+Each check is a model turn even when nothing is new (about 160 per 8 hours at a 3-minute interval); widen the interval if usage matters.
 
-## Limitations
+## Security notes
 
-- No automated test suite yet; verified manually against a live account.
-- `search_messages` searches a single chat; use `search_all` for a global search.
-- Display-name resolution falls back to scanning your dialog list, so exact usernames/ids are faster and more reliable.
+- The session file is equivalent to being logged in as you. It stays in `~/.config/telegram-mcp/` (700/600) and is never logged or returned by a tool.
+- The server talks only to Telegram's MTProto servers. No telemetry, no update checks.
+- Automating a user account is a Telegram ToS grey area. Reading is fine; keep sending rare and human-approved.
+
+## Updating from upstream (only when you decide to)
+
+Nothing updates automatically: no Dependabot/Renovate, GitHub Actions disabled on the fork, no "Sync fork".
+
+```bash
+cd ~/src/telegram-mcp
+git fetch upstream
+git log --oneline hardened..upstream/main          # what is new upstream
+git diff 0397afa upstream/main                     # upstream changes since our base
+```
+
+1. Review the diff with the checklist in [AUDIT.md](AUDIT.md): network, credentials/session, dependencies, login flow, tools (especially writes and read-state), prompt injection, errors.
+2. Merge by hand on a branch, resolving conflicts in favour of the hardened behaviour: `git switch -c merge-upstream hardened && git merge upstream/main`.
+3. Re-lock deliberately and review what changed: `uv lock --upgrade` (or keep the current lock), `git diff uv.lock`, `uv sync --locked`.
+4. `.venv/bin/python tests/smoke.py`.
+5. Record the new upstream base commit in AUDIT.md, merge into `hardened`, `git push origin hardened`.
+
+## Stopping / revoking
+
+1. Telegram → Settings → Devices: terminate the session for this app.
+2. `claude mcp remove telegram -s user` (and `-s local` in the agent workspace).
+3. `rm -rf ~/.config/telegram-mcp/`.
+4. Optionally delete the app at my.telegram.org.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Original work © 2026 Shaan Satsangi.

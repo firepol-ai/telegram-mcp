@@ -1,0 +1,18 @@
+# Copy to ~/.config/telegram-mcp/config.toml (mode 600). Enforced by the server, not by the model.
+#
+# [[chats]] lists the chats poll_new() watches. send = true additionally allows send_message to that
+# chat (which still needs TELEGRAM_MCP_ALLOW_SEND=1, a preview, and your approval). Get ids with list_chats.
+
+# Appended by the server to every sent message; the model cannot remove it.
+signature = "🤖 AI-generated reply, reviewed and sent by me"
+max_sends_per_hour = 10
+
+[[chats]]
+chat = "@alice_example"        # @username or numeric id
+note = "Alice, backend developer"
+send = true
+
+[[chats]]
+chat = -1001234567890          # groups/channels: use the numeric id from list_chats
+note = "Dev team: managers and developers"
+send = false
