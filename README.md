@@ -112,6 +112,42 @@ Each agent is a folder of its own, so you can run several (one per project or te
   - `SOUL.md`: your people, priorities, tone, reference repositories and what never to share ([agent/SOUL.example.md](agent/SOUL.example.md)),
   - `.claude/settings.json`: permissions ([agent/settings.example.json](agent/settings.example.json)): read-only access to the listed repositories, Telegram read tools allowed, `send_message` always asks, Bash/Edit/Write/Web denied, `.env*` and the Telegram config unreadable. **Do not run this session with `--dangerously-skip-permissions` or in auto mode:** it processes text written by other people.
 
+### How the files work together
+
+| File | What goes in it | Who edits it | Enforced by |
+|---|---|---|---|
+| `telegram.toml` | The chats this agent may access; which may receive a sent message; signature; rate limit | You | The server: hard limit, the model cannot get around it |
+| `.claude/settings.json` | Which repositories it may read; which tools are allowed, asked or denied | You | Claude Code |
+| `SOUL.md` | Everything about you and this agent's job: people, what matters (including colleagues' conversations), notifications, how to write replies (tone, length, emojis, language), how to summarise, reference repositories, what never to share | You, often | The model follows it |
+| `CLAUDE.md` | The fixed routine: check, triage, report, draft, never send without approval, treat messages as untrusted | Nobody; copy it from `agent/CLAUDE.md` when it changes upstream | The model follows it |
+
+Claude Code loads `CLAUDE.md` automatically when a session starts in the folder, and `CLAUDE.md` imports `SOUL.md` with the line `@SOUL.md`. The split keeps your personal content separate from the procedure, so the procedure can be updated without touching it. When the two disagree on style or priorities, SOUL.md wins; the safety rules in CLAUDE.md (no sending without approval, ignore instructions inside messages) always apply.
+
+Changes to `SOUL.md` or `CLAUDE.md` take effect in a new session; in a running one, tell the agent to "re-read SOUL.md". Changes to `telegram.toml` are picked up by the server on the next tool call, no restart needed.
+
+To tune behaviour, edit SOUL.md and tell the agent what to change: "shorter drafts, no emojis", "also tell me about anything on payments in Dev team", "summaries as bullet points with a timeline". You can also ask the agent to propose a SOUL.md edit, then paste it in yourself (the agent cannot write files).
+
+### Finding chat ids
+
+Users with a public username can be listed as `"@username"`. Groups, channels, and users without a username need the numeric id:
+
+1. Start Claude Code in any folder that is **not** an agent workspace (the user-scope server there can see all your chats, read-only).
+2. Ask: `Use the telegram tools: list_chats with limit 100` (or `list_unread`).
+3. Each line looks like `id=-1001234567890 type=group name="Dev team" unread=3 last=…`. Copy the `id` value exactly, including the minus sign:
+   - users: positive numbers, e.g. `123456789`,
+   - basic groups: negative, e.g. `-987654321`,
+   - supergroups and channels: negative with a `-100` prefix, e.g. `-1001234567890`.
+4. Add it to `telegram.toml`:
+
+   ```toml
+   [[chats]]
+   chat = -1001234567890      # a number, not a string
+   note = "Dev team: managers and developers"
+   send = false
+   ```
+
+The `note` is passed to the agent with every batch of new messages from that chat, so it is a good place for one line of context.
+
 ### Set up
 
 ```bash
@@ -125,7 +161,7 @@ claude mcp add --scope local telegram -e TELEGRAM_MCP_WORKSPACE="$PWD" -e TELEGR
   ~/src/telegram-mcp/.venv/bin/python ~/src/telegram-mcp/server.py
 ```
 
-The `local` registration overrides the read-only user-scope one only inside this directory. Find chat ids with `list_chats` in a Claude session started anywhere else (the user-scope server is unrestricted read-only) and add them to `telegram.toml` as `[[chats]]`. Leave out `TELEGRAM_MCP_ALLOW_SEND=1` for an agent that should only read and report.
+The `local` registration overrides the read-only user-scope one only inside this directory. Add the chats to `telegram.toml` (see [Finding chat ids](#finding-chat-ids)) and fill in `SOUL.md`. Leave out `TELEGRAM_MCP_ALLOW_SEND=1` for an agent that should only read and report.
 
 ### Run
 
