@@ -1,11 +1,17 @@
 """Config, secrets and permission checks shared by server.py and login.py.
 
-Everything private lives in one directory (default ~/.config/telegram-mcp/):
+Secrets live in one private directory (default ~/.config/telegram-mcp/), shared by all agents:
 
     env           API_ID / API_HASH, filled in by hand        mode 600
     session       Telethon StringSession, written by login.py mode 600
-    config.toml   watched chats, send allowlist, signature    mode 600 (optional)
-    state.json    poll_new() cursors                          mode 600 (written by server)
+
+Per-agent settings live in the agent's workspace (TELEGRAM_MCP_WORKSPACE, set in the local MCP
+registration of that folder):
+
+    telegram.toml          allowed chats, send allowlist, signature, rate limit
+    .telegram-state.json   poll_new() cursors (written by the server, mode 600)
+
+Without a workspace the server is unrestricted read-only and cannot send.
 
 Secrets are parsed into a dict and never put into os.environ.
 """
@@ -22,8 +28,10 @@ from telethon.sessions import StringSession
 CONFIG_DIR = Path(os.environ.get("TELEGRAM_MCP_CONFIG_DIR", "~/.config/telegram-mcp")).expanduser()
 ENV_FILE = CONFIG_DIR / "env"
 SESSION_FILE = CONFIG_DIR / "session"
-CONFIG_FILE = CONFIG_DIR / "config.toml"
-STATE_FILE = CONFIG_DIR / "state.json"
+_ws = os.environ.get("TELEGRAM_MCP_WORKSPACE")
+WORKSPACE = Path(_ws).expanduser().resolve() if _ws else None
+CONFIG_FILE = WORKSPACE / "telegram.toml" if WORKSPACE else None
+STATE_FILE = WORKSPACE / ".telegram-state.json" if WORKSPACE else None
 
 # Sleep through FloodWait errors up to this many seconds instead of failing.
 FLOOD_SLEEP_SECONDS = 600
@@ -35,13 +43,16 @@ class InsecureConfig(RuntimeError):
     pass
 
 
-def check_private(path: Path) -> None:
-    """Refuse a path that other users could read: wrong owner, group/other bits or a POSIX ACL."""
+def check_private(path: Path, forbidden_bits: int = 0o077) -> None:
+    """Refuse a path that other users could access: wrong owner, forbidden group/other bits, or a POSIX ACL.
+
+    forbidden_bits 0o077 = nobody else may read or write (secrets); 0o022 = nobody else may write (policy).
+    """
     st = path.stat()
     problems = []
     if st.st_uid != os.geteuid():
         problems.append(f"owned by uid {st.st_uid}, not {os.geteuid()}")
-    if st.st_mode & 0o077:
+    if st.st_mode & forbidden_bits:
         problems.append(f"mode {stat.filemode(st.st_mode)} has group/other bits")
     try:
         acls = [a for a in os.listxattr(path) if a in _ACL_XATTRS]
@@ -50,7 +61,7 @@ def check_private(path: Path) -> None:
     if acls:
         problems.append("has a POSIX ACL")
     if problems:
-        want = "700" if path.is_dir() else "600"
+        want = ("700" if path.is_dir() else "600") if forbidden_bits == 0o077 else "go-w"
         raise InsecureConfig(
             f"Refusing to use {path}: {'; '.join(problems)}. "
             f"Fix with: setfacl -b {path}; chmod {want} {path}"
@@ -64,9 +75,17 @@ def check_all() -> None:
     check_private(CONFIG_DIR)
     if not ENV_FILE.is_file():
         raise InsecureConfig(f"{ENV_FILE} does not exist. See README → Setup.")
-    for path in (ENV_FILE, SESSION_FILE, CONFIG_FILE, STATE_FILE):
+    for path in (ENV_FILE, SESSION_FILE):
         if path.exists():
             check_private(path)
+    if WORKSPACE:
+        if not CONFIG_FILE.is_file():
+            raise InsecureConfig(f"TELEGRAM_MCP_WORKSPACE is set but {CONFIG_FILE} does not exist.")
+        # The allowlist is enforced by the server, so nobody else may be able to change it.
+        check_private(WORKSPACE, 0o022)
+        check_private(CONFIG_FILE, 0o022)
+        if STATE_FILE.exists():
+            check_private(STATE_FILE)
 
 
 def load_env() -> dict[str, str]:
@@ -82,7 +101,7 @@ def load_env() -> dict[str, str]:
 
 
 def load_config() -> dict:
-    if not CONFIG_FILE.exists():
+    if not CONFIG_FILE:
         return {}
     with CONFIG_FILE.open("rb") as f:
         return tomllib.load(f)

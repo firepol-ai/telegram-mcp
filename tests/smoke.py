@@ -40,9 +40,13 @@ async def list_tools(env: dict) -> dict:
         return {t.name: t.description for t in (await session.list_tools()).tools}
 
 
-def refuses(env: dict) -> bool:
+def refuses_with(env: dict, needle: str) -> bool:
     r = subprocess.run([sys.executable, SERVER], env=env, input="", capture_output=True, text=True, timeout=30)
-    return r.returncode != 0 and "Refusing" in r.stderr
+    return r.returncode != 0 and needle in r.stderr
+
+
+def refuses(env: dict) -> bool:
+    return refuses_with(env, "Refusing")
 
 
 async def main() -> None:
@@ -77,6 +81,26 @@ async def main() -> None:
             assert refuses(env), "server must refuse an env file with a POSIX ACL"
             subprocess.run(["setfacl", "-b", str(env_file)], check=True)
         print("ok  refuses to start with loose permissions" + ("" if acl.returncode == 0 else " (ACL case skipped: no setfacl)"))
+
+        ws = Path(tmp) / "agent"
+        ws.mkdir()
+        os.chmod(ws, 0o755)
+        subprocess.run(["setfacl", "-b", str(ws)], check=False, capture_output=True)
+        ws_env = {**env, "TELEGRAM_MCP_WORKSPACE": str(ws), "TELEGRAM_MCP_ALLOW_SEND": "1"}
+        assert refuses_with(ws_env, "does not exist"), "workspace without telegram.toml must be refused"
+        toml = ws / "telegram.toml"
+        toml.write_text('[[chats]]\nchat = "@example"\nsend = true\n')
+        os.chmod(toml, 0o644)
+        subprocess.run(["setfacl", "-b", str(toml)], check=False, capture_output=True)
+        tools = await list_tools(ws_env)
+        assert set(tools) == READ_TOOLS | WRITE_TOOLS, f"workspace tool set wrong: {sorted(tools)}"
+        os.chmod(toml, 0o664)
+        assert refuses(ws_env), "server must refuse a group-writable telegram.toml"
+        os.chmod(toml, 0o644)
+        os.chmod(ws, 0o775)
+        assert refuses(ws_env), "server must refuse a group-writable workspace"
+        os.chmod(ws, 0o755)
+        print("ok  workspace: telegram.toml required, refused when others can modify it")
     print("smoke test passed")
 
 

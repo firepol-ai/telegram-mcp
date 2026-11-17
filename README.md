@@ -6,7 +6,7 @@ This is a hardened fork of [Shaan-alpha/telegram-mcp](https://github.com/Shaan-a
 
 ## What is different from upstream
 
-- **Read-only by default.** `send_message` only exists when `TELEGRAM_MCP_ALLOW_SEND=1`, only targets chats marked `send = true` in `config.toml`, always returns a preview first, needs a second `confirm=true` call with identical arguments, appends a fixed signature, and is rate-limited.
+- **Read-only by default.** `send_message` only exists when `TELEGRAM_MCP_ALLOW_SEND=1`, only targets chats marked `send = true` in the agent's `telegram.toml`, always returns a preview first, needs a second `confirm=true` call with identical arguments, appends a fixed signature, and is rate-limited.
 - **Never marks anything as read.** Your unread state in the Telegram apps stays as it was.
 - **Secrets out of the repo and out of MCP configs.** Everything lives in `~/.config/telegram-mcp/`. The server refuses to start if that directory or any file in it is accessible to group/others, has a POSIX ACL, or is owned by another user.
 - **Untrusted content is marked.** Message text is wrapped in `<telegram_message>` tags (delimiters inside messages are neutralised) and every tool description says it is third-party data, not instructions.
@@ -26,7 +26,7 @@ This is a hardened fork of [Shaan-alpha/telegram-mcp](https://github.com/Shaan-a
 | `get_mentions(chat=None, limit=200)` | Messages that @mention me or reply to me; all chats if `chat` is omitted |
 | `search_messages(chat, query, limit=50)` | Search in one chat |
 | `search_all(query, limit=50)` | Search across all chats |
-| `poll_new(limit_per_chat=200)` | New messages in the chats listed in `config.toml` since the last call (local cursor) |
+| `poll_new(limit_per_chat=200)` | Agent workspaces only: new messages in the workspace's chats since the last call (local cursor) |
 | `send_message(chat, text, reply_to=None, confirm=False)` | **Only with `TELEGRAM_MCP_ALLOW_SEND=1`.** Preview, then send after approval |
 
 `chat` accepts a numeric id, `@username`, `t.me` link, or (partial) title. If a title matches several chats you get the list of candidates instead of a guess.
@@ -52,7 +52,6 @@ uv sync --locked          # creates .venv/ from uv.lock, verifying hashes
 mkdir -p ~/.config/telegram-mcp
 setfacl -b ~/.config/telegram-mcp 2>/dev/null; chmod 700 ~/.config/telegram-mcp
 (umask 077; printf 'API_ID=\nAPI_HASH=\n' > ~/.config/telegram-mcp/env)
-(umask 077; cp config.example.toml ~/.config/telegram-mcp/config.toml)
 ```
 
 `setfacl -b` matters if `~/.config` carries a default ACL: new files would inherit it and the server would refuse them.
@@ -104,8 +103,11 @@ A long-running Claude Code session that watches selected chats, tells you what n
 
 ### Pieces
 
-- `~/.config/telegram-mcp/config.toml`: which chats `poll_new` watches, which ones may receive a sent message, the signature and the rate limit. **Enforced by the server**, so a manipulated model cannot widen it. See [config.example.toml](config.example.toml).
+Each agent is a folder of its own, so you can run several (one per project or team) with different chats, instructions and permissions. All of them share the one Telegram login in `~/.config/telegram-mcp/`.
+
 - A workspace directory with:
+  - `telegram.toml`: the complete list of chats this agent can access, which ones may receive a sent message, the signature and the rate limit ([agent/telegram.example.toml](agent/telegram.example.toml)). **Enforced by the server**: with a workspace, every tool is limited to these chats, so a manipulated model cannot widen it. The server refuses to start if anyone but you can modify the file or the folder (mode bits or POSIX ACL),
+  - `.telegram-state.json`: written by the server, `poll_new` cursors for this agent only,
   - `CLAUDE.md`: the secretary's procedure ([agent/CLAUDE.md](agent/CLAUDE.md)),
   - `SOUL.md`: your people, priorities, tone, reference repositories and what never to share ([agent/SOUL.example.md](agent/SOUL.example.md)),
   - `.claude/settings.json`: permissions ([agent/settings.example.json](agent/settings.example.json)): read-only access to the listed repositories, Telegram read tools allowed, `send_message` always asks, Bash/Edit/Write/Web denied, `.env*` and the Telegram config unreadable. **Do not run this session with `--dangerously-skip-permissions` or in auto mode:** it processes text written by other people.
@@ -114,14 +116,16 @@ A long-running Claude Code session that watches selected chats, tells you what n
 
 ```bash
 mkdir -p ~/telegram-agent/.claude && cd ~/telegram-agent
+setfacl -Rb . 2>/dev/null; chmod -R go-w .                              # only you may change the allowlist
+cp ~/src/telegram-mcp/agent/telegram.example.toml telegram.toml        # then list the chats
 cp ~/src/telegram-mcp/agent/CLAUDE.md .
 cp ~/src/telegram-mcp/agent/SOUL.example.md SOUL.md                    # then edit
 cp ~/src/telegram-mcp/agent/settings.example.json .claude/settings.json  # then set additionalDirectories
-claude mcp add --scope local telegram -e TELEGRAM_MCP_ALLOW_SEND=1 -- \
+claude mcp add --scope local telegram -e TELEGRAM_MCP_WORKSPACE="$PWD" -e TELEGRAM_MCP_ALLOW_SEND=1 -- \
   ~/src/telegram-mcp/.venv/bin/python ~/src/telegram-mcp/server.py
 ```
 
-The `local` registration overrides the read-only user-scope one only inside this directory. Get chat ids with `list_chats` and add them to `config.toml` as `[[chats]]`.
+The `local` registration overrides the read-only user-scope one only inside this directory. Find chat ids with `list_chats` in a Claude session started anywhere else (the user-scope server is unrestricted read-only) and add them to `telegram.toml` as `[[chats]]`. Leave out `TELEGRAM_MCP_ALLOW_SEND=1` for an agent that should only read and report.
 
 ### Run
 

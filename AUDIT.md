@@ -117,7 +117,7 @@ Tags: **OK** = no action needed, **RISK** = worth knowing, accepted or mitigated
 | Secrets in `os.environ` | Env file parsed into a dict (`tg_common.py` `load_env`); `python-dotenv` no longer a direct dependency |
 | Phone in `get_me` | Removed |
 | Unpinned deps | `pyproject.toml` (exact) + `uv.lock` (sha256); one new direct dep: `qrcode==8.2` for QR login (pure Python, no deps on Linux, source checked: no network) |
-| `send_message` always on | Registered only with `TELEGRAM_MCP_ALLOW_SEND=1`; allowlist from `config.toml`; preview → identical `confirm=true`; server-side signature; rate limit |
+| `send_message` always on | Registered only with `TELEGRAM_MCP_ALLOW_SEND=1`; allowlist from the agent workspace's `telegram.toml` (every tool restricted to its chats); preview → identical `confirm=true`; server-side signature; rate limit |
 | First-match title resolution | Exact match wins; otherwise ambiguous titles return the candidates |
 | Bare third-party text | `<telegram_message>` delimiters, delimiter neutralisation, untrusted note in every tool description and result |
 | FloodWait swallowed / 60 s cap | `flood_sleep_threshold=600`; no blanket `except` in resolution |
