@@ -1,21 +1,27 @@
 # Copy to <agent workspace>/telegram.toml. Enforced by the server, not by the model.
 # The server refuses to start if anyone but you can modify this file or its directory.
 #
-# [[chats]] is the complete list of chats this agent can see: every tool (history, search, unread,
-# mentions, poll_new) is limited to them. send = true additionally allows send_message to that chat
-# (which still needs TELEGRAM_MCP_ALLOW_SEND=1, a preview, and your approval).
-# Find ids with list_chats in any Claude session outside an agent workspace.
+# Add one [[chats]] block per chat: each private chat with a colleague and each group or channel.
+# A group block covers everyone in it; list a person separately only to watch their private chat with you.
+# Chats not listed here are invisible to this agent (no reading, searching or sending).
+#
+#   chat  @username, or the numeric id from list_chats (a number, not in quotes, minus sign included)
+#   note  optional one-line context, passed to the agent with every batch of messages from this chat
+#   send  true  = the agent may send here, only after a preview and your explicit approval
+#         false = read-only (default): it still summarises and drafts, you post yourself
+#
+# Changes apply on the agent's next check, no restart needed.
 
 # Appended by the server to every sent message; the model cannot remove it.
 signature = "🤖 AI-generated reply, reviewed and sent by me"
 max_sends_per_hour = 10
 
 [[chats]]
-chat = "@alice_example"        # @username or numeric id
+chat = "@alice_example"        # private chat with a colleague
 note = "Alice, backend developer"
 send = true
 
 [[chats]]
-chat = -1001234567890          # groups/channels: use the numeric id from list_chats
+chat = -1001234567890          # a group or channel
 note = "Dev team: managers and developers"
 send = false
