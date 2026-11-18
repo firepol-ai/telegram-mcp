@@ -163,16 +163,47 @@ claude mcp add --scope local telegram -e TELEGRAM_MCP_WORKSPACE="$PWD" -e TELEGR
 
 The `local` registration overrides the read-only user-scope one only inside this directory. Add the chats to `telegram.toml` (see [Finding chat ids](#finding-chat-ids)) and fill in `SOUL.md`. Leave out `TELEGRAM_MCP_ALLOW_SEND=1` for an agent that should only read and report.
 
-### Run
+### Run with Remote Control (steer it from your phone)
+
+Remote Control makes a Claude Code session running on your machine available in the Claude mobile app and on claude.ai/code. The session, the MCP server, your Telegram login and the repositories all stay on your machine; the app is only a window into it. The machine has to stay on and awake.
+
+**1. Start the session in tmux**, so it survives closing the terminal:
 
 ```bash
 tmux new -s telegram-agent
-cd ~/telegram-agent && claude
+cd ~/telegram-agent
+claude --remote-control "Telegram secretary"
 ```
 
-Inside the session: accept the workspace trust dialog, run `/remote-control` (give it a title), then `/loop 3m Run the Telegram check from CLAUDE.md`. Detach with `Ctrl-b d`. On your phone, open the session in the Claude app: you get notified when something needs you; answer `send 1` to approve a draft, then approve the `send_message` permission prompt.
+The name is what you will see in the app. Alternatively, start `claude` normally and run `/remote-control` inside the session. Do the very first start at the terminal: the workspace trust dialog only appears there. Keep the default permission mode; do not add `--dangerously-skip-permissions` or `--permission-mode bypassPermissions`/`auto`.
 
-Each check is a model turn even when nothing is new (about 160 per 8 hours at a 3-minute interval); widen the interval if usage matters.
+**2. Start the periodic check** in the session (at the terminal, or later from the app):
+
+```
+/loop 3m Run the Telegram check from CLAUDE.md
+```
+
+**3. Detach** with `Ctrl-b d`. Reattach later with `tmux attach -t telegram-agent`.
+
+**4. On your phone**, open the Claude app and pick the session by its name (on a computer: claude.ai/code). Allow notifications for the Claude app on the phone, and make sure push notifications for agents are enabled in Claude Code (`"agentPushNotifEnabled": true` in `~/.claude/settings.json`). The agent sends a notification when something needs you or a draft is ready; permission prompts (such as the one for `send_message`) also appear in the app.
+
+**Day-to-day, from the app**, write to the session as in any Claude chat:
+
+| You write | What happens |
+|---|---|
+| `send 2` | Draft 2 is previewed with the exact final text (signature included); approve the `send_message` permission prompt to send it |
+| `send 2, but say we can do it on Friday` | The draft is changed, previewed again, then sent after your approval |
+| `skip 1` / `I'll answer 3 myself` | Nothing is sent |
+| `summarise 💻 Dev since this morning` | A catch-up using `get_since` |
+| `what did Anna ask me this week?` | Searches the watched chats |
+| `re-read SOUL.md` | Picks up your edits without restarting |
+| `stop the loop` / `/loop 10m …` | Pauses checking or changes the interval |
+
+Sending always takes two approvals: your message in the chat (`send 2`) and the permission prompt. Only the second one cannot be produced by a Telegram message trying to manipulate the agent, so read the preview before approving it.
+
+**If the session stops** (reboot, crash, `claude` exited): start it again with the same command in tmux; add `-c` (`claude -c --remote-control "Telegram secretary"`) to continue the previous conversation, then start `/loop` again: loops do not survive a restart. The `poll_new` cursors are kept in `.telegram-state.json`, so nothing is missed or repeated.
+
+**Usage:** each check is a model turn even when nothing is new (about 160 per 8 hours at a 3-minute interval). Widen the interval if usage matters, and stop the loop when you do not need it (evenings, holidays).
 
 ## Security notes
 
