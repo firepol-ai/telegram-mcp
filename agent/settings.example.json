@@ -35,6 +35,7 @@
       "Read(//**/logs/**)",
       "Read(//**/*.pem)",
       "Read(//**/*.key)"
-    ]
+    ],
+    "disableBypassPermissionsMode": "disable"
   }
 }

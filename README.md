@@ -175,7 +175,7 @@ cd ~/telegram-agent
 claude --remote-control "Telegram secretary"
 ```
 
-The name is what you will see in the app. Alternatively, start `claude` normally and run `/remote-control` inside the session. Do the very first start at the terminal: the workspace trust dialog only appears there. Keep the default permission mode; do not add `--dangerously-skip-permissions` or `--permission-mode bypassPermissions`/`auto`.
+The name is what you will see in the app. Alternatively, start `claude` normally and run `/remote-control` inside the session. Do the very first start at the terminal: the workspace trust dialog only appears there. Keep the default permission mode; do not add `--dangerously-skip-permissions` or `--permission-mode bypassPermissions`/`auto`. The template settings include `"disableBypassPermissionsMode": "disable"`, so bypass mode is refused in the workspace even if you start `claude` with that flag out of habit.
 
 **2. Start the periodic check** in the session (at the terminal, or later from the app):
 
