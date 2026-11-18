@@ -181,8 +181,10 @@ The name is what you will see in the app. Alternatively, start `claude` normally
 **2. Start the periodic check** in the session (at the terminal, or later from the app):
 
 ```
-/loop 3m Run the Telegram check from CLAUDE.md
+/loop Run the Telegram check from CLAUDE.md
 ```
+
+Without an interval the agent paces itself (about every 3 minutes, see `CLAUDE.md` step 1) and marks quiet checks as no-ops, which Claude Code collapses, so idle checks stay silent. A fixed interval also works (`/loop 3m …`); quiet checks then write nothing but each still shows as a turn.
 
 **3. Detach** with `Ctrl-b d`. Reattach later with `tmux attach -t telegram-agent`.
 

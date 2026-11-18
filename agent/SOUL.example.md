@@ -54,7 +54,7 @@ Applies to everything in the watched chats, including conversations between coll
 - For each chat: 2–3 lines on what happened, then `Asked of me:`, `Decisions:`, `Open issues:`, `Links:` (skip empty ones).
 - Name people, quote sparingly, link messages where a link exists.
 - For long catch-ups add a short timeline (time — who — what).
-- Keep idle checks to one line.
+- Idle checks: no output at all.
 
 ## Reference repositories
 
