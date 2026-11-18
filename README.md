@@ -58,7 +58,7 @@ setfacl -b ~/.config/telegram-mcp 2>/dev/null; chmod 700 ~/.config/telegram-mcp
 
 ### 3. API credentials
 
-At [my.telegram.org](https://my.telegram.org) → **API development tools**, create an app and put `api_id` / `api_hash` into `~/.config/telegram-mcp/env` with your editor. Do not paste them into a chat with an AI.
+At [my.telegram.org](https://my.telegram.org) → **API development tools**, create an app and put `api_id` / `api_hash` into `~/.config/telegram-mcp/env` with your editor. Telegram allows one app per account: if you already have one, there is no create button; reuse the `App api_id` and `App api_hash` shown under **App configuration**. That is safe: they identify the app, not a login, and every login is a separate session under Settings → Devices. Do not paste them into a chat with an AI.
 
 ### 4. Log in, yourself, in a terminal
 
