@@ -74,7 +74,7 @@ async def _resolve(client: TelegramClient, chat: str):
         return _resolved[key]
     if re.fullmatch(r"-?\d+", key):
         entity = await _by_id(client, int(key))
-    elif key.startswith("@") or "t.me/" in key:
+    elif not _is_title(key):
         entity = await client.get_entity(key)
     else:
         entity = await _by_title(client, key)
@@ -89,11 +89,20 @@ async def _allowed_ids(client: TelegramClient) -> set[int] | None:
     return {utils.get_peer_id(await _resolve(client, str(e["chat"]))) for e in tc.load_config().get("chats", [])}
 
 
+def _is_title(key: str) -> bool:
+    return not (re.fullmatch(r"-?\d+", key) or key.startswith("@") or "t.me/" in key)
+
+
 async def _resolve_allowed(client: TelegramClient, chat: str):
-    entity = await _resolve(client, chat)
     allowed = await _allowed_ids(client)
+    key = str(chat).strip()
+    if allowed is not None and _is_title(key):
+        # Match titles among this agent's chats only, so errors never reveal other chats.
+        entity = await _by_title(client, key, only=allowed)
+    else:
+        entity = await _resolve(client, key)
     if allowed is not None and utils.get_peer_id(entity) not in allowed:
-        raise PermissionError(f"{_name(entity)!r} is not listed in {tc.CONFIG_FILE}; this agent cannot access it.")
+        raise PermissionError(f"{key!r} is not one of this agent's chats (see {tc.CONFIG_FILE}).")
     return entity
 
 
@@ -108,10 +117,12 @@ async def _by_id(client: TelegramClient, chat_id: int):
     raise ValueError(f"No chat with id {chat_id}. Use list_chats to find ids.")
 
 
-async def _by_title(client: TelegramClient, title: str):
+async def _by_title(client: TelegramClient, title: str, only: set[int] | None = None):
     target = title.casefold()
     exact, partial = [], []
     async for d in client.iter_dialogs():
+        if only is not None and d.id not in only:
+            continue
         name = (d.name or "").casefold()
         if name == target:
             exact.append(d)
