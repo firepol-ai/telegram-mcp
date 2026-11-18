@@ -352,16 +352,33 @@ async def get_since(chat: str, since_iso: str, limit: int = 2000) -> str:
 async def get_mentions(chat: str | None = None, limit: int = 200) -> str:
     """Messages that @mention me or reply to my messages, oldest→newest (read and unread).
 
-    chat: one chat (id, @username or title), or omit to search all chats.
+    chat: one chat (id, @username or title). If omitted: every group/channel with unread mentions plus
+    the 50 most recently active groups/channels (in an agent workspace: its listed chats).
     limit: max messages (default 200).
     """
     client = await _ensure()
-    entity = await _resolve_allowed(client, chat) if chat else None
-    msgs = [m async for m in client.iter_messages(entity, limit=_limit(limit), filter=InputMessagesFilterMyMentions())]
-    msgs = await _only_allowed(client, msgs)
-    msgs.reverse()
-    header = _chat_header(entity) if entity else 'scope="all chats"'
-    return "\n".join([HEADER, _render(msgs, header, show_chat=entity is None)])
+    limit = _limit(limit)
+    mentions = InputMessagesFilterMyMentions()
+    if chat:
+        entity = await _resolve_allowed(client, chat)
+        msgs = [m async for m in client.iter_messages(entity, limit=limit, filter=mentions)]
+        msgs.reverse()
+        return "\n".join([HEADER, _render(msgs, _chat_header(entity))])
+
+    # Telegram's global search rejects the mentions filter, so search chat by chat.
+    allowed = await _allowed_ids(client)
+    targets, recent = [], 0
+    async for d in client.iter_dialogs():
+        if d.is_user or (allowed is not None and d.id not in allowed):
+            continue
+        recent += 1
+        if recent <= 50 or allowed is not None or getattr(d.dialog, "unread_mentions_count", 0):
+            targets.append(d.entity)
+    msgs = []
+    for entity in targets:
+        msgs += [m async for m in client.iter_messages(entity, limit=limit, filter=mentions)]
+    msgs = sorted(msgs, key=lambda m: m.date)[-limit:]
+    return "\n".join([HEADER, _render(msgs, f'scope="{len(targets)} groups/channels"', show_chat=True)])
 
 
 @read_tool
