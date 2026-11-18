@@ -35,13 +35,13 @@ Each message is one compact line: `<telegram_message id=… ts=… from="…" re
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/). Paths below assume the repo is at `~/src/telegram-mcp`.
+Requires [uv](https://docs.astral.sh/uv/). Paths below assume the repo is at `~/projects/telegram-mcp`.
 
 ### 1. Install (pinned)
 
 ```bash
-git clone git@github.com:firepol-ai/telegram-mcp.git ~/src/telegram-mcp
-cd ~/src/telegram-mcp
+git clone git@github.com:firepol-ai/telegram-mcp.git ~/projects/telegram-mcp
+cd ~/projects/telegram-mcp
 uv sync --locked          # creates .venv/ from uv.lock, verifying hashes
 .venv/bin/python tests/smoke.py
 ```
@@ -63,7 +63,7 @@ At [my.telegram.org](https://my.telegram.org) → **API development tools**, cre
 ### 4. Log in, yourself, in a terminal
 
 ```bash
-cd ~/src/telegram-mcp
+cd ~/projects/telegram-mcp
 .venv/bin/python login.py           # QR code: Telegram → Settings → Devices → Link Desktop Device
 .venv/bin/python login.py --phone   # fallback: phone number + login code
 ```
@@ -75,7 +75,7 @@ The 2FA password (if set) is asked without echo. The session is written to `~/.c
 Claude Code, read-only, in every project:
 
 ```bash
-claude mcp add --scope user telegram -- ~/src/telegram-mcp/.venv/bin/python ~/src/telegram-mcp/server.py
+claude mcp add --scope user telegram -- ~/projects/telegram-mcp/.venv/bin/python ~/projects/telegram-mcp/server.py
 ```
 
 Claude Desktop (`claude_desktop_config.json`), read-only:
@@ -84,8 +84,8 @@ Claude Desktop (`claude_desktop_config.json`), read-only:
 {
   "mcpServers": {
     "telegram": {
-      "command": "/home/YOU/src/telegram-mcp/.venv/bin/python",
-      "args": ["/home/YOU/src/telegram-mcp/server.py"]
+      "command": "/home/YOU/projects/telegram-mcp/.venv/bin/python",
+      "args": ["/home/YOU/projects/telegram-mcp/server.py"]
     }
   }
 }
@@ -153,12 +153,12 @@ The `note` is passed to the agent with every batch of new messages from that cha
 ```bash
 mkdir -p ~/telegram-agent/.claude && cd ~/telegram-agent
 setfacl -Rb . 2>/dev/null; chmod -R go-w .                              # only you may change the allowlist
-cp ~/src/telegram-mcp/agent/telegram.example.toml telegram.toml        # then list the chats
-cp ~/src/telegram-mcp/agent/CLAUDE.md .
-cp ~/src/telegram-mcp/agent/SOUL.example.md SOUL.md                    # then edit
-cp ~/src/telegram-mcp/agent/settings.example.json .claude/settings.json  # then set additionalDirectories
+cp ~/projects/telegram-mcp/agent/telegram.example.toml telegram.toml        # then list the chats
+cp ~/projects/telegram-mcp/agent/CLAUDE.md .
+cp ~/projects/telegram-mcp/agent/SOUL.example.md SOUL.md                    # then edit
+cp ~/projects/telegram-mcp/agent/settings.example.json .claude/settings.json  # then set additionalDirectories
 claude mcp add --scope local telegram -e TELEGRAM_MCP_WORKSPACE="$PWD" -e TELEGRAM_MCP_ALLOW_SEND=1 -- \
-  ~/src/telegram-mcp/.venv/bin/python ~/src/telegram-mcp/server.py
+  ~/projects/telegram-mcp/.venv/bin/python ~/projects/telegram-mcp/server.py
 ```
 
 The `local` registration overrides the read-only user-scope one only inside this directory. Add the chats to `telegram.toml` (see [Finding chat ids](#finding-chat-ids)) and fill in `SOUL.md`. Leave out `TELEGRAM_MCP_ALLOW_SEND=1` for an agent that should only read and report.
@@ -185,7 +185,7 @@ Each check is a model turn even when nothing is new (about 160 per 8 hours at a 
 Nothing updates automatically: no Dependabot/Renovate, GitHub Actions disabled on the fork, no "Sync fork".
 
 ```bash
-cd ~/src/telegram-mcp
+cd ~/projects/telegram-mcp
 git fetch upstream
 git log --oneline hardened..upstream/main          # what is new upstream
 git diff 0397afa upstream/main                     # upstream changes since our base
