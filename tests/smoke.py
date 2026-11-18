@@ -4,7 +4,7 @@
 
 Checks that:
   - without TELEGRAM_MCP_ALLOW_SEND no write tool is registered,
-  - with TELEGRAM_MCP_ALLOW_SEND=1 only send_message is added,
+  - with TELEGRAM_MCP_ALLOW_SEND=1 only preview_message and send_message are added,
   - the server refuses to start when the env file or config dir is readable by others.
 """
 
@@ -24,7 +24,7 @@ READ_TOOLS = {
     "get_me", "list_chats", "list_unread", "get_history", "get_unread",
     "get_since", "get_mentions", "search_messages", "search_all", "poll_new",
 }
-WRITE_TOOLS = {"send_message"}
+WRITE_TOOLS = {"preview_message", "send_message"}
 
 
 def base_env(config_dir: Path) -> dict:
@@ -68,7 +68,7 @@ async def main() -> None:
 
         tools = await list_tools({**env, "TELEGRAM_MCP_ALLOW_SEND": "1"})
         assert set(tools) == READ_TOOLS | WRITE_TOOLS, f"send-enabled tool set wrong: {sorted(tools)}"
-        print("ok  TELEGRAM_MCP_ALLOW_SEND=1 adds only send_message")
+        print("ok  TELEGRAM_MCP_ALLOW_SEND=1 adds only preview_message and send_message")
 
         os.chmod(env_file, 0o640)
         assert refuses(env), "server must refuse a group-readable env file"

@@ -15,7 +15,8 @@
       "mcp__telegram__get_mentions",
       "mcp__telegram__search_messages",
       "mcp__telegram__search_all",
-      "mcp__telegram__poll_new"
+      "mcp__telegram__poll_new",
+      "mcp__telegram__preview_message"
     ],
     "ask": [
       "mcp__telegram__send_message"

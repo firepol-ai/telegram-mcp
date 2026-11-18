@@ -6,7 +6,7 @@ This is a hardened fork of [Shaan-alpha/telegram-mcp](https://github.com/Shaan-a
 
 ## What is different from upstream
 
-- **Read-only by default.** `send_message` only exists when `TELEGRAM_MCP_ALLOW_SEND=1`, only targets chats marked `send = true` in the agent's `telegram.toml`, always returns a preview first, needs a second `confirm=true` call with identical arguments, appends a fixed signature, and is rate-limited.
+- **Read-only by default.** `preview_message` / `send_message` only exist when `TELEGRAM_MCP_ALLOW_SEND=1` and only target chats marked `send = true` in the agent's `telegram.toml`. `send_message` only sends text that was previewed with identical arguments, appends a fixed signature, and is rate-limited.
 - **Never marks anything as read.** Your unread state in the Telegram apps stays as it was.
 - **Secrets out of the repo and out of MCP configs.** Everything lives in `~/.config/telegram-mcp/`. The server refuses to start if that directory or any file in it is accessible to group/others, has a POSIX ACL, or is owned by another user.
 - **Untrusted content is marked.** Message text is wrapped in `<telegram_message>` tags (delimiters inside messages are neutralised) and every tool description says it is third-party data, not instructions.
@@ -27,7 +27,8 @@ This is a hardened fork of [Shaan-alpha/telegram-mcp](https://github.com/Shaan-a
 | `search_messages(chat, query, limit=50)` | Search in one chat |
 | `search_all(query, limit=50)` | Search across all chats |
 | `poll_new(limit_per_chat=200)` | Agent workspaces only: new messages in the workspace's chats since the last call (local cursor) |
-| `send_message(chat, text, reply_to=None, confirm=False)` | **Only with `TELEGRAM_MCP_ALLOW_SEND=1`.** Preview, then send after approval |
+| `preview_message(chat, text, reply_to=None)` | **Only with `TELEGRAM_MCP_ALLOW_SEND=1`.** Recipient and exact final text with signature; sends nothing |
+| `send_message(chat, text, reply_to=None)` | **Only with `TELEGRAM_MCP_ALLOW_SEND=1`.** Sends text previously previewed with identical arguments |
 
 `chat` accepts a numeric id, `@username`, `t.me` link, or (partial) title. If a title matches several chats you get the list of candidates instead of a guess.
 
@@ -191,15 +192,15 @@ The name is what you will see in the app. Alternatively, start `claude` normally
 
 | You write | What happens |
 |---|---|
-| `send 2` | Draft 2 is previewed with the exact final text (signature included); approve the `send_message` permission prompt to send it |
-| `send 2, but say we can do it on Friday` | The draft is changed, previewed again, then sent after your approval |
+| `send 2` | Draft 2 (already shown with its exact final text, signature included) is sent after you approve the `send_message` permission prompt |
+| `send 2, but say we can do it on Friday` | The draft is changed and previewed again; it is sent after your next `send` and the permission prompt |
 | `skip 1` / `I'll answer 3 myself` | Nothing is sent |
 | `summarise 💻 Dev since this morning` | A catch-up using `get_since` |
 | `what did Anna ask me this week?` | Searches the watched chats |
 | `re-read SOUL.md` | Picks up your edits without restarting |
 | `stop the loop` / `/loop 10m …` | Pauses checking or changes the interval |
 
-Sending always takes two approvals: your message in the chat (`send 2`) and the permission prompt. Only the second one cannot be produced by a Telegram message trying to manipulate the agent, so read the preview before approving it. If one approval is enough for you, move `mcp__telegram__send_message` from `ask` to `allow` in the workspace settings and change step 6 of `CLAUDE.md` so your chat message is the only approval; the server-side limits (allowed chats, signature, rate limit) still apply.
+Sending always takes two approvals: your message in the chat (`send 2`) and the permission prompt. Only the second one cannot be produced by a Telegram message trying to manipulate the agent, so read the preview before approving it. `preview_message` is allowed without a prompt because it sends nothing. If one approval is enough for you, move `mcp__telegram__send_message` from `ask` to `allow` in the workspace settings and change step 6 of `CLAUDE.md` so your chat message is the only approval; the server-side limits (allowed chats, signature, rate limit) still apply.
 
 **If the session stops** (reboot, crash, `claude` exited): start it again with the same command in tmux; add `-c` (`claude -c --remote-control "Telegram secretary"`) to continue the previous conversation, then start `/loop` again: loops do not survive a restart. The `poll_new` cursors are kept in `.telegram-state.json`, so nothing is missed or repeated.
 
