@@ -126,7 +126,7 @@ Claude Code loads `CLAUDE.md` automatically when a session starts in the folder,
 
 Changes to `SOUL.md` or `CLAUDE.md` take effect in a new session; in a running one, tell the agent to "re-read SOUL.md". Changes to `telegram.toml` are picked up by the server on the next tool call, no restart needed.
 
-To tune behaviour, edit SOUL.md and tell the agent what to change: "shorter drafts, no emojis", "also tell me about anything on payments in Dev team", "summaries as bullet points with a timeline". You can also ask the agent to propose a SOUL.md edit, then paste it in yourself (the agent cannot write files).
+To tune behaviour, edit SOUL.md and tell the agent what to change: "shorter drafts, no emojis", "also tell me about anything on payments in Dev team", "summaries as bullet points with a timeline". You can also ask the agent to propose a SOUL.md edit, then paste it in yourself (the template settings do not let it write files). To let it apply your feedback itself, remove `"Edit"` from `deny`, add `Edit(//abs/path/to/workspace/SOUL.md)` and `.../CLAUDE.md` to `ask`, and deny `Edit(...)` explicitly for `telegram.toml`, `.claude/**`, your repositories and home config files (deny rules beat ask rules, so a blanket `Edit` deny would block the two files too). Every edit then shows you the diff for approval.
 
 ### Finding chat ids
 
