@@ -199,7 +199,7 @@ The name is what you will see in the app. Alternatively, start `claude` normally
 | `re-read SOUL.md` | Picks up your edits without restarting |
 | `stop the loop` / `/loop 10m …` | Pauses checking or changes the interval |
 
-Sending always takes two approvals: your message in the chat (`send 2`) and the permission prompt. Only the second one cannot be produced by a Telegram message trying to manipulate the agent, so read the preview before approving it.
+Sending always takes two approvals: your message in the chat (`send 2`) and the permission prompt. Only the second one cannot be produced by a Telegram message trying to manipulate the agent, so read the preview before approving it. If one approval is enough for you, move `mcp__telegram__send_message` from `ask` to `allow` in the workspace settings and change step 6 of `CLAUDE.md` so your chat message is the only approval; the server-side limits (allowed chats, signature, rate limit) still apply.
 
 **If the session stops** (reboot, crash, `claude` exited): start it again with the same command in tmux; add `-c` (`claude -c --remote-control "Telegram secretary"`) to continue the previous conversation, then start `/loop` again: loops do not survive a restart. The `poll_new` cursors are kept in `.telegram-state.json`, so nothing is missed or repeated.
 
