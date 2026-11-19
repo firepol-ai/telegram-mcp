@@ -128,6 +128,14 @@ Changes to `SOUL.md` or `CLAUDE.md` take effect in a new session; in a running o
 
 To tune behaviour, edit SOUL.md and tell the agent what to change: "shorter drafts, no emojis", "also tell me about anything on payments in Dev team", "summaries as bullet points with a timeline". You can also ask the agent to propose a SOUL.md edit, then paste it in yourself (the template settings do not let it write files). To let it apply your feedback itself, remove `"Edit"` from `deny`, add `Edit(//abs/path/to/workspace/SOUL.md)` and `.../CLAUDE.md` to `ask`, and deny `Edit(...)` explicitly for `telegram.toml`, `.claude/**`, your repositories and home config files (deny rules beat ask rules, so a blanket `Edit` deny would block the two files too). Every edit then shows you the diff for approval.
 
+If the workspace is a git repository, the agent can also commit its own SOUL/CLAUDE edits. Copy [agent/hooks/bash-allowlist.py](agent/hooks/bash-allowlist.py) to `.claude/hooks/`, remove `"Bash"` from `deny`, add `Bash(git status:*)`, `Bash(git diff:*)`, `Bash(git log:*)` to `allow` and `Bash(git commit:*)` to `ask`, deny `Edit(//abs/path/to/workspace/.gitattributes)` and `Edit(~/.gitconfig)`, and register the hook:
+
+```json
+"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 -I /abs/path/to/workspace/.claude/hooks/bash-allowlist.py"}]}]}
+```
+
+The hook runs before the permission check and blocks every shell command except `git status`, `git diff [-- SOUL.md CLAUDE.md]`, `git log --oneline [-N]` and `git commit -m "<one line>" -- SOUL.md [CLAUDE.md]` (no `$`, backticks or chaining), so a command you approve by mistake still cannot run anything else. The commit itself asks. Keep `.claude/**` in the Edit deny list so the agent cannot change the hook.
+
 ### Finding chat ids
 
 Users with a public username can be listed as `"@username"`. Groups, channels, and users without a username need the numeric id:
